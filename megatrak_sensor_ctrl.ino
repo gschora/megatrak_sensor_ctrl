@@ -10,6 +10,9 @@ RH_RF69 rf69(15, 14);
 // Class to manage message delivery and receipt, using the driver declared above
 RHDatagram manager(rf69, SERVER_ADDRESS);
 
+
+uint8_t msg[RH_RF69_MAX_MESSAGE_LEN];
+
 void setup() {
 
 	Serial.begin(9600);
@@ -30,17 +33,17 @@ void setup() {
 
 }
 
-uint8_t data[] = "dere zruck!";
-uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-
 void loop() {
+	chkMsg();
+	
+}
 
+void chkMsg(){
 	if (manager.available()) {
-
 		// Should be a message for us now   
-		uint8_t len = sizeof(buf);
+		uint8_t len = sizeof(msg);
 		uint8_t from;
-		if (manager.recvfrom(buf, &len, &from)) {
+		if (manager.recvfrom(msg, &len, &from)) {
 
 			Serial.print("got request from: ");
 			Serial.print(from, DEC);
@@ -48,15 +51,18 @@ void loop() {
 
 			// trick zum zusammenbauen von low und High byte um int zu erhalten
 			// siehe unter http://forum.arduino.cc/index.php?topic=99527.msg746371#msg746371
-			uint16_t u_Int = *(uint16_t*)buf;
+			uint16_t u_Int = *(uint16_t*)msg;
 			Serial.println(u_Int);
-
-			// Send a reply back to the originator client
-      		if (!manager.sendto(data, sizeof(data), from))
-        		Serial.println("sendto failed");
-		}
-		else {
+		} else {
 			Serial.println("recv failed");
 		}
 	}
+}
+
+void sendMsg(uint8_t data[], uint8_t rcvr){
+	// Send a reply back to the originator client
+	if (!manager.sendto(data, sizeof(data), rcvr)){
+   		Serial.println("sendto failed");
+   	}
+       	manager.waitPacketSent(); //wichtig!!!
 }
