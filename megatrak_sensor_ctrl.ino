@@ -4,6 +4,10 @@
 #include <EEPROM.h>
 #include <SerialCommand.h>
 
+#define RESTART_ADDR       0xE000ED0C
+#define READ_RESTART()     (*(volatile uint32_t *)RESTART_ADDR)
+#define WRITE_RESTART(val) ((*(volatile uint32_t *)RESTART_ADDR) = (val))
+
 #define EEPROM_NODE_ADDRESS 0
 #define EEPROM_SERVER_ADDRESS 1
 uint8_t SERVER_ADDRESS = EEPROM.read(EEPROM_SERVER_ADDRESS);
@@ -31,6 +35,7 @@ void setup() {
 	cmd.addCommand("ssa", sc_setServerAddress); //set server address
 	cmd.addCommand("cfg", sc_printCfg);
 	cmd.addCommand("scn", sc_sndCmdNode); //send a command to a node over rf
+	cmd.setDefaultHandler(sc_default);
 	//###################################################
 
 	if (!manager.init())
@@ -57,14 +62,22 @@ void chkMsg() {
 		// Should be a message for us now   
 		uint8_t len = sizeof(msg);
 		uint8_t from;
+		memset(msg, 0, sizeof(msg)); //clearing the msg array IMPORTANT!!!!! otherwise old values from previous messages stay in there!!!
+
 		if (manager.recvfrom(msg, &len, &from)) {
 			if (msg[0] == 'u') {
-				Serial.print("umin from: ");
-				Serial.print(from, DEC);
-				Serial.print(": ");
+				//Serial.print("umin from: ");
+				//Serial.print(from, DEC);
+				//Serial.print(": ");
 				//Baut den int aus high und lowbyte wieder zusammen
-				uint16_t umin = ((int)msg[2] << 8) + msg[1];
-				Serial.println(umin);
+				uint16_t umin = ((int)msg[2] << 8) + (int)msg[1];
+				//Serial.println(umin);
+			}
+			else if (msg[0] == 'i') {
+				Serial.println("from: ");
+				Serial.print(from);
+				Serial.print(" ");
+				Serial.println((char*)msg);
 			}
 			// trick zum zusammenbauen von low und High byte um int zu erhalten
 			// siehe unter http://forum.arduino.cc/index.php?topic=99527.msg746371#msg746371
@@ -121,6 +134,7 @@ void setEEPROMNodeAddress(uint8_t address) {
 	Serial.println(address);
 	EEPROM.write(EEPROM_NODE_ADDRESS, address);
 	Serial.println("done!");
+	WRITE_RESTART(0x5FA0004);
 }
 uint8_t getEEPROMNodeAddress() {
 	return EEPROM.read(EEPROM_NODE_ADDRESS);
@@ -171,6 +185,15 @@ void sc_printCfg() {
 	Serial.println(getEEPROMNodeAddress());
 	Serial.print("server address: ");
 	Serial.println(getEEPROMServerAddress());
+}
+
+void sc_default(const char *command) {
+	Serial.println("command not found! try:");
+	Serial.println("ssa ... set server adress");
+	Serial.println("sna ... set this nodes adress");
+	Serial.println("scn ... send command to node");
+
+
 }
 
 //###################################################
