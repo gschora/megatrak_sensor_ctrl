@@ -19,10 +19,16 @@ RH_RF69 rf69(15, 14);
 RHDatagram manager(rf69, NODE_ADDRESS);
 uint8_t msg[RH_RF69_MAX_MESSAGE_LEN];
 
-uint8_t involtPin[14] = {}; //equals involt.pin.P in app
-String involtString[2] = {}; //equals involt.pin.S in app
-char involt[16];
-String involt_fname;
+struct SPEED{
+	uint8_t nodeid;
+	char type;
+	uint8_t revNr;
+	union {
+		float f;
+		unsigned char b[4];
+	} val;
+};
+struct SPEED speed;
 
 void setup() {
 	Serial.begin(57600);
@@ -53,8 +59,8 @@ void setup() {
 void loop() {
 	cmd.readSerial();
 	chkMsg();
-	involtReceive();
-	involt_fname = "";
+	//involtReceive();
+	//involt_fname = "";
 }
 
 void chkMsg() {
@@ -62,23 +68,37 @@ void chkMsg() {
 		// Should be a message for us now   
 		uint8_t len = sizeof(msg);
 		uint8_t from;
-		memset(msg, 0, sizeof(msg)); //clearing the msg array IMPORTANT!!!!! otherwise old values from previous messages stay in there!!!
-
+		
 		if (manager.recvfrom(msg, &len, &from)) {
-			if (msg[0] == 'u') {
-				//Serial.print("umin from: ");
-				//Serial.print(from, DEC);
-				//Serial.print(": ");
-				//Baut den int aus high und lowbyte wieder zusammen
-				uint16_t umin = ((int)msg[2] << 8) + (int)msg[1];
-				//Serial.println(umin);
-			}
-			else if (msg[0] == 'i') {
+			if (msg[0] == 'i') {
 				Serial.println("from: ");
 				Serial.print(from);
 				Serial.print(" ");
 				Serial.println((char*)msg);
 			}
+			else if (msg[0] == 'u' || msg[0] == 's') {
+				decodeSpeed(msg,from);
+
+			}
+			//Serial.print("size ");
+			//Serial.println(len);
+			//Serial.println(msg[0]);
+			//Serial.println(msg[5]);
+			//Serial.println(msg[10]);
+			//if (msg[0] == 'u') {
+			//	//Serial.print("umin from: ");
+			//	//Serial.print(from, DEC);
+			//	//Serial.print(": ");
+			//	//Baut den int aus high und lowbyte wieder zusammen
+			//	uint16_t umin = ((int)msg[2] << 8) + (int)msg[1];
+			//	//Serial.println(umin);
+			//}
+			//else if (msg[0] == 'i') {
+			//	Serial.println("from: ");
+			//	Serial.print(from);
+			//	Serial.print(" ");
+			//	Serial.println((char*)msg);
+			//}
 			// trick zum zusammenbauen von low und High byte um int zu erhalten
 			// siehe unter http://forum.arduino.cc/index.php?topic=99527.msg746371#msg746371
 			//uint16_t u_Int = *(uint16_t*)msg;
@@ -86,6 +106,8 @@ void chkMsg() {
 		else {
 			Serial.println("recv failed");
 		}
+		//memset(msg, 0, sizeof(msg)); //clearing the msg array IMPORTANT!!!!! otherwise old values from previous messages stay in there!!!
+
 	}
 }
 
@@ -96,6 +118,39 @@ void sendMsg(char* data, uint8_t rcvr) {
 	}
 	manager.waitPacketSent(); //wichtig!!!
 }
+
+void decodeSpeed(uint8_t* msg, uint8_t from) {
+	speed.nodeid = from;
+	speed.revNr = msg[1]; // -'0' ist trick um aus ascii-zahl einen int zu machen
+	speed.type = msg[0];
+	speed.val.b[0] = msg[2];
+	speed.val.b[1] = msg[3];
+	speed.val.b[2] = msg[4];
+	speed.val.b[3] = msg[5];
+
+	printSpeed();
+}
+
+void printSpeed() {
+	Serial.print(speed.nodeid);
+	Serial.print(":");
+	Serial.print(speed.revNr);
+	Serial.print(":");
+	Serial.println(speed.val.f);
+	//Serial.print(" ");
+	//Serial.println(translateType(speed));
+}
+
+char* translateType(SPEED s) {
+	switch (s.type) {
+	case 'u':
+		return "u/min";
+		break;
+	case 's':
+		return "km/h";
+	}
+}
+
 
 //###################################################
 void sc_sndCmdNode() {
@@ -196,52 +251,3 @@ void sc_default(const char *command) {
 
 }
 
-//###################################################
-void involtReceive() {
-	if (Serial.available() > 0) {
-		Serial.readBytesUntil('\n', involt, sizeof(involt));
-		int pin;
-		if (involt[0] == 'P') {
-			int value;
-			sscanf(involt, "P%dV%d", &pin, &value);
-			involtPin[pin] = value;
-		}
-		else if (involt[0] == 'S') {
-			char value[sizeof(involt)];
-			sscanf(involt, "S%dV%s", &pin, &value);
-			involtString[pin] = value;
-		}
-		else if (involt[0] == 'F') {
-			char value[sizeof(involt)];
-			sscanf(involt, "F%s", &value);
-			involt_fname = value;
-		};
-		memset(involt, 0, sizeof(involt));
-	};
-};
-
-void involtSend(int pinNumber, int sendValue) {
-	Serial.print('A');
-	Serial.print(pinNumber);
-	Serial.print('V');
-	Serial.print(sendValue);
-	Serial.println('E');
-	Serial.flush();
-};
-
-void involtSendString(int pinNumber, String sendString) {
-	Serial.print('A');
-	Serial.print(pinNumber);
-	Serial.print('V');
-	Serial.print(sendString);
-	Serial.println('E');
-	Serial.flush();
-
-};
-
-void involtSendFunction(String functionName) {
-	Serial.print('F');
-	Serial.print(functionName);
-	Serial.println('E');
-	Serial.flush();
-};
